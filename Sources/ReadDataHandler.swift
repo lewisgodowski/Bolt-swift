@@ -128,11 +128,6 @@ class ReadDataHandler: ChannelInboundHandler {
             }
             if let lastResponse = packs.last {
                 if lastResponse.category == Response.Category.success {
-                    /*print("Chunks: \(chunks.count)")
-                    print("0: \(chunks[0].count)")
-                    print("\(packs[0].category)")
-                    print("1: \(chunks[1].count)")
-                    print("\(packs[1].category)")*/
                     return true
                 }
             }

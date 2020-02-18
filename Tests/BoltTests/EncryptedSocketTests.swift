@@ -23,6 +23,7 @@ class EncryptedSocketTests: XCTestCase {
         }
     }
 
+    /*
     static var allTests: [(String, (EncryptedSocketTests) -> () throws -> Void)] {
         return [
             ("testMichaels100k", testMichaels100k),
@@ -31,39 +32,31 @@ class EncryptedSocketTests: XCTestCase {
             ("testUnwind", testUnwind),
             ("testUnwindWithToNodes", testUnwindWithToNodes)
         ]
-    }
+    }*/
 
     func testMichaels100k() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100k()
+        try socketTests?.templateMichaels100k(self)
     }
 
     func testMichaels100kCannotFitInATransaction() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100kCannotFitInATransaction()
+        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
     }
 
     func testRubbishCypher() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateRubbishCypher()
+        try socketTests?.templateRubbishCypher(self)
     }
 
     func testUnwind() throws {
         XCTAssertNotNil(socketTests)
-
-        let exp = expectation(description: "\(#function)\(#line)")
-
-        DispatchQueue.global(qos: .background).async {
-            try! self.socketTests?.templateUnwind()
-            exp.fulfill()
-        }
-
-        waitForExpectations(timeout: 10, handler: nil)
+        self.socketTests?.templateUnwind(self)
     }
 
     func testUnwindWithToNodes() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateUnwindWithToNodes()
+        try socketTests?.templateUnwindWithToNodes(self)
     }
 
 }

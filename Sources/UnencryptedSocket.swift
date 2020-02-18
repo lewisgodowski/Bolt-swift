@@ -22,8 +22,9 @@ public class UnencryptedSocket {
     var bootstrap: Bootstrap?
     var channel: Channel?
 
-    var readGroup: DispatchGroup?
-    var receivedData: [UInt8] = []
+    //var readGroup: DispatchGroup?
+    var readPromise: EventLoopPromise<[Byte]>?
+    //var receivedData: [UInt8] = []
 
     fileprivate static let readBufferSize = 8192
 
@@ -63,15 +64,10 @@ public class UnencryptedSocket {
 
     #endif
 
-    public func connect(timeout: Int) throws {
-
-        let leave = { [weak self] (identifier: String) in
-            self?.readGroup?.leave()
-        }
+    public func connect(timeout: Int, completion: @escaping () -> ()) throws {
 
         self.dataHandler.dataReceivedBlock = { data in
-            self.receivedData = data
-            leave("leave")
+            self.readPromise?.succeed(data)
         }
 
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -84,8 +80,13 @@ public class UnencryptedSocket {
         #endif
 
         self.bootstrap = bootstrap
-        let channel = try bootstrap.connect(host: hostname, port: port).wait()
-        self.channel = channel
+        bootstrap.connect(host: hostname, port: port).map{ theChannel -> Void in
+            self.channel = theChannel
+
+        }.whenSuccess { _ in
+            completion()
+        }
+        
     }
 }
 
@@ -104,31 +105,31 @@ extension UnencryptedSocket: SocketProtocol {
         try? group?.syncShutdownGracefully()
     }
 
-    public func send(bytes: [Byte]) throws {
+    public func send(bytes: [Byte]) -> EventLoopFuture<Void>? {
 
-        guard let channel = channel else { return }
+        guard let channel = channel else { return nil }
 
+        let didSendFuture: EventLoopPromise<Void>  = channel.eventLoop.makePromise()
+        
         var buffer = channel.allocator.buffer(capacity: bytes.count)
         buffer.writeBytes(bytes)
-        try _ = channel.writeAndFlush(buffer).wait()
+        channel.writeAndFlush(buffer).whenSuccess { _ in
+            didSendFuture.succeed(())
+        }
+        
+        return didSendFuture.futureResult
     }
 
-    public func receive(expectedNumberOfBytes: Int32) throws -> [Byte] {
+    public func receive(expectedNumberOfBytes: Int32) throws -> EventLoopFuture<[Byte]>? {
 
-        if self.readGroup != nil {
-            print("Error: already reading")
-            return []
+        guard let readPromise = channel?.eventLoop.makePromise(of: [Byte].self) else {
+            return nil
         }
-        self.readGroup = DispatchGroup()
-        self.readGroup?.enter()
-
+        
+        self.readPromise = readPromise
+        
         self.channel?.read()
 
-        self.readGroup?.wait()
-        self.readGroup = nil
-
-        let outData = self.receivedData
-        self.receivedData = []
-        return outData
+        return readPromise.futureResult
     }
 }

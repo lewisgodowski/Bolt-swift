@@ -1,7 +1,7 @@
 {
 	"username": "neo4j",
-	"password": "<passcode>",
-	"hostname": "localhost",
+	"password": "test",
+	"hostname": "10.0.1.42",
 	"port": 7687,
 	"hostUsesSelfSignedCertificate": true
 }
