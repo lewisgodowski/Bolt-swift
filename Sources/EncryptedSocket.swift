@@ -45,7 +45,7 @@ public class EncryptedSocket: UnencryptedSocket {
             cert.append(NIOSSLCertificateSource.certificate(certFile))
         }
 
-        var tlsConfiguration = TLSConfiguration.forClient(trustRoots: trustRoot, certificateChain: cert, privateKey: nil /*, renegotiationSupport: .once*/)
+        var tlsConfiguration = TLSConfiguration.forClient(trustRoots: trustRoot, certificateChain: cert, privateKey: nil)
         tlsConfiguration.certificateVerification = .noHostnameVerification
         let sslContext = try! NIOSSLContext(configuration: tlsConfiguration)
 
@@ -74,14 +74,6 @@ public class EncryptedSocket: UnencryptedSocket {
                     channel.pipeline.addHandler(dataHandler)
                 }
             }
-
-            /*
-            .channelInitializer { channel in
-                let openSslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: self.hostname)
-                return channel.pipeline.addHandler(openSslHandler).flatMap {
-                    return dataHandler
-                }
-        }*/
 
         return bootstrap
     }

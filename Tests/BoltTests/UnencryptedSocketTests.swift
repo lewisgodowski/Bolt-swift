@@ -36,27 +36,28 @@ class UnencryptedSocketTests: XCTestCase {
 
     func testMichaels100k() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100k()
+        try socketTests?.templateMichaels100k(self)
     }
 
     func testMichaels100kCannotFitInATransaction() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100kCannotFitInATransaction()
+        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
     }
 
     func testRubbishCypher() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateRubbishCypher()
+        try socketTests?.templateRubbishCypher(self)
     }
 
     func testUnwind() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateUnwind()
+        socketTests?.templateUnwind(self)
     }
 
     func testUnwindWithToNodes() throws {
         XCTAssertNotNil(socketTests)
-        try socketTests?.templateUnwindWithToNodes()
+        try socketTests?.templateUnwindWithToNodes(self)
     }
 
 }
+

@@ -1,5 +1,6 @@
 import XCTest
 import PackStream
+import NIO
 
 #if os(Linux)
     import Dispatch
@@ -8,6 +9,12 @@ import PackStream
 @testable import Bolt
 
 class BoltTests: XCTestCase {
+
+    var eventLoopGroup: MultiThreadedEventLoopGroup! = nil
+
+    override func setUp() {
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    }
 
     func testConnection() throws {
         let config = TestConfig.loadConfig()
@@ -20,8 +27,12 @@ class BoltTests: XCTestCase {
         try conn.connect { (success) in
             do {
                 if success == true {
+                    self.createNode(connection: conn) { _ in
+                        connectionExp.fulfill()
+                    }
+                } else {
+                    XCTFail("Could not connect successfully")
                     connectionExp.fulfill()
-                    _ = try self.createNode(connection: conn)
                 }
             } catch(let error) {
                 XCTFail("Did not expect any errors, but got \(error)")
@@ -53,13 +64,10 @@ class BoltTests: XCTestCase {
         let socket = try UnencryptedSocket(hostname: config.hostname, port: config.port)
         let conn = Connection(socket: socket, settings: settings)
         try conn.connect { (success) in
-            do {
-                if success == true {
+            if success == true {
+                self.unwind(connection: conn) { _ in
                     connectionExp.fulfill()
-                    _ = try self.unwind(connection: conn)
                 }
-            } catch(let error) {
-                XCTFail("Did not expect any errors, but got \(error)")
             }
         }
 
@@ -69,68 +77,61 @@ class BoltTests: XCTestCase {
 
     }
 
-    func unwind(connection conn: Connection) throws -> XCTestExpectation {
-
-        let cypherExp = expectation(description: "Perform cypher query")
+    func unwind(connection conn: Connection, completion: @escaping (Bool) -> ()) {
 
         let statement = "UNWIND range(1, 10000) AS n RETURN n"
 
         let request = Request.run(statement: statement, parameters: Map(dictionary: [:]))
-        try conn.request(request) { (success, _) in
-            do {
-                if success {
-                    cypherExp.fulfill()
-                    _ = try self.pullResultsExpectingAtLeastNumberOfResults(num: 10000 - 1, connection: conn)
-
-                }
-            } catch(let error) {
-                XCTFail("Did not expect any errors, but got \(error)")
+        try? conn.request(request)?.whenSuccess { _ in
+            self.pullResultsExpectingAtLeastNumberOfResults(num: 10000 - 1, connection: conn) { success in
+                completion(success)
             }
         }
+        
 
-        return cypherExp
     }
 
-    func createNode(connection conn: Connection) throws -> XCTestExpectation {
-
-        let cypherExp = expectation(description: "Perform cypher query")
+    func createNode(connection conn: Connection, completion: @escaping (Bool) -> ()) {
 
         let statement = "CREATE (n:FirstNode {name:{name}}) RETURN n"
         let parameters = Map(dictionary: [ "name": "Steven" ])
         let request = Request.run(statement: statement, parameters: parameters)
-        try conn.request(request) { (success, _) in
-            do {
-                if success {
-                    cypherExp.fulfill()
-                    _ = try self.pullResults(connection: conn)
+        do {
+            try conn.request(request)?.whenSuccess { _ in
+                do {
+                    try self.pullResults(connection: conn) { _ in
+                        completion(true)
+                    }
+                } catch(let error) {
+                    XCTFail("Did not expect any errors, but got \(error)")
+                    completion(false)
                 }
-            } catch(let error) {
-                XCTFail("Did not expect any errors, but got \(error)")
             }
+        } catch {
+            completion(false)
         }
-
-        return cypherExp
     }
 
-    func pullResults(connection conn: Connection) throws -> XCTestExpectation {
-        return try pullResultsExpectingAtLeastNumberOfResults(num: 0, connection: conn)
+    func pullResults(connection conn: Connection, completion: @escaping (Bool) -> ()) {
+        return try pullResultsExpectingAtLeastNumberOfResults(num: 0, connection: conn, completion: completion)
     }
 
-    func pullResultsExpectingAtLeastNumberOfResults(num: Int, connection conn: Connection) throws -> XCTestExpectation {
-
-        let pullAllExp = expectation(description: "Perform pull All")
+    func pullResultsExpectingAtLeastNumberOfResults(num: Int, connection conn: Connection, completion: @escaping (Bool) -> ()) {
 
         let request = Request.pullAll()
-        try conn.request(request) { (success, responses) in
-            if responses.count > num && success == true {
-                pullAllExp.fulfill()
-            } else {
-                XCTFail("Did not find sufficient amount of results. Found \(responses.count) instead of \(num)")
-                pullAllExp.fulfill()
+        do {
+            try conn.request(request)?.whenSuccess { responses in
+                if responses.count > num {
+                    completion(true)
+                } else {
+                    XCTFail("Did not find sufficient amount of results. Found \(responses.count) instead of \(num)")
+                    completion(false)
+                }
             }
+        } catch {
+            XCTFail(error.localizedDescription)
+            completion(false)
         }
-
-        return pullAllExp
     }
 
     static var allTests: [(String, (BoltTests) -> () throws -> Void)] {

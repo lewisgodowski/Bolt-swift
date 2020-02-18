@@ -1,5 +1,6 @@
 import Foundation
 import PackStream
+import NIO
 
 #if os(Linux)
 import Dispatch
@@ -11,7 +12,7 @@ public class Connection: NSObject {
 
     private var socket: SocketProtocol
     public var currentTransactionBookmark: String?
-
+    
     public init(socket: SocketProtocol,
                 settings: ConnectionSettings = ConnectionSettings() ) {
 
@@ -21,49 +22,115 @@ public class Connection: NSObject {
         super.init()
     }
 
-    public func connect(completion: (_ success: Bool) throws -> Void) throws {
-        try socket.connect(timeout: 2500) // in ms
-        try initBolt()
-        try initialize()
-        try completion(true)
+    public func connect(completion: @escaping (_ success: Bool) throws -> Void) throws {
+        try socket.connect(timeout: 2500 /* in ms */) {
+            
+            var eventLoop: EventLoop? = MultiThreadedEventLoopGroup.currentEventLoop
+            if eventLoop == nil {
+                let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+                eventLoop = eventLoopGroup.next()
+            }
+            guard let currentEventLoop = eventLoop else {
+                print("Error getting current eventloop")
+                return
+            }
+            
+            self.initBolt(on: currentEventLoop).whenSuccess { wasSuccess in
+                
+                if wasSuccess == false {
+                    print("Hmm, this was no success")
+                    try? completion(false)
+                    return
+                }
+            
+                let initFuture = self.initialize(on: currentEventLoop)
+                initFuture.map { (response) in
+                    try? completion(true)
+                }.whenFailure { error in
+                    try? completion(false)
+                }
+            }
+        }
     }
 
     public func disconnect() {
         socket.disconnect()
     }
 
-    private func initBolt() throws {
-        try socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-        let response = try socket.receive(expectedNumberOfBytes: 4)
-        let version = try UInt32.unpack(response[0..<response.count])
-        if version == 1 {
-            // success
-        } else {
-            throw ConnectionError.unknownVersion
-        }
-    }
+    private func initBolt(on eventLoop: EventLoop) -> EventLoopFuture<Bool> {
+        
+        let initPromise = eventLoop.makePromise(of: Bool.self)
+        
+        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
 
-    private func initialize() throws {
-        let message = Request.initialize(settings: settings)
-        let chunks = try message.chunk()
-        for chunk in chunks {
-            try socket.send(bytes: chunk)
-        }
-
-        let maxChunkSize = Int32(Request.kMaxChunkSize)
-        var responseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-        while (responseData[responseData.count - 1] == 0 && responseData[responseData.count - 2] == 0) == false { // chunk terminated by 0x00 0x00
-            let additionalResponseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-            responseData.append(contentsOf: additionalResponseData)
-        }
-
-        let unchunkedResponseDatas = try Response.unchunk(responseData)
-        for unchunkedResponseData in unchunkedResponseDatas {
-            let unpackedResponse = try Response.unpack(unchunkedResponseData)
-            if unpackedResponse.category != .success {
-                throw ConnectionError.authenticationError
+            var version: UInt32 = 0
+            _ = try? self.socket.receive(expectedNumberOfBytes: 4).map { response -> (Bool) in
+                let result = response.map { bytes -> Void in
+                    do {
+                        version = try UInt32.unpack(bytes[0..<bytes.count])
+                        initPromise.succeed(version == 1)
+                    } catch {
+                        version = 0
+                        initPromise.succeed(false)
+                    }
+                }
+                
+                return version == 1
             }
         }
+        
+        return initPromise.futureResult
+        
+    }
+    
+    private func initialize(on eventLoop: EventLoop) -> EventLoopFuture<Response> {
+        let message = Request.initialize(settings: settings)
+        let chunks = try? message.chunk()
+        let sendFutures = chunks?.compactMap({ (chunk) -> EventLoopFuture<Void>? in
+            socket.send(bytes: chunk)
+        })
+        
+        let maxChunkSize = Int32(Request.kMaxChunkSize)
+        
+        let promise = eventLoop.makePromise(of: Response.self)
+        var accumulatedData: [Byte] = []
+        
+        func loop() {
+            // First, we call `read` to read in the next chunk and hop
+            // over to `eventLoop` so we can safely write to `accumulatedChunks`
+            // without a lock.
+            do {
+                try socket.receive(expectedNumberOfBytes: maxChunkSize)?.hop(to: eventLoop).map { responseData in
+                    // Next, we just append the chunk to the accumulation
+                    accumulatedData.append(contentsOf: responseData)
+                    
+                    // chunk terminated by 0x00 0x00
+                    if (responseData[responseData.count - 1] == 0 && responseData[responseData.count - 2] == 0) == false {
+                        loop()
+                    } else {
+                        
+                        let unchunkedResponseDatas = try? Response.unchunk(accumulatedData)
+                        for unchunkedResponseData in unchunkedResponseDatas ?? [] {
+                            if let unpackedResponse = try? Response.unpack(unchunkedResponseData) {
+                                if unpackedResponse.category != .success {
+                                    promise.fail(ConnectionError.authenticationError)
+                                    return
+                                }
+                                promise.succeed(unpackedResponse)
+                            }
+                        }
+                    }
+                }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
+
+            } catch {
+                promise.fail(error)
+            }
+            
+        }
+
+        loop()
+
+        return promise.futureResult
     }
 
     public enum ConnectionError: Error {
@@ -114,63 +181,90 @@ public class Connection: NSObject {
         }
     }
 
-    public func request(_ request: Request, completionHandler: (Bool, [Response]) throws -> Void) throws {
+    public func request(_ request: Request) throws -> EventLoopFuture<[Response]>? {
 
+        guard let eventLoop = MultiThreadedEventLoopGroup.currentEventLoop else {
+            print("Error, could not get current eventloop")
+            return nil
+        }
+        
         try chunkAndSend(request: request)
 
         let maxChunkSize = Int32(Request.kMaxChunkSize)
-        var responseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
+        
+        let promise = eventLoop.makePromise(of: [Response].self)
+        var accumulatedData: [Byte] = []
+        
+        func loop() {
+            // First, we call `read` to read in the next chunk and hop
+            // over to `eventLoop` so we can safely write to `accumulatedChunks`
+            // without a lock.
+            do {
+                try socket.receive(expectedNumberOfBytes: maxChunkSize)?.hop(to: eventLoop).map { responseData in
+                    // Next, we just append the chunk to the accumulation
+                    
+                    accumulatedData.append(contentsOf: responseData)
 
-        var i = 0
-        while responseData.count < 2 { // sometimes we just need to grab data over again - but how can we know?
-            responseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-            i = i + 1
-            if i > 10 {
-                break // something is absolutely off
+                    if responseData.count < 2 {
+                        print("Error, got too little data back")
+                        print(request)
+                        print(request.command)
+                        print(request.items)
+                        loop()
+                        return
+                    }
+
+                    // chunk terminated by 0x00 0x00
+                    if (responseData[responseData.count - 1] == 0 && responseData[responseData.count - 2] == 0) == false {
+                        loop()
+                        return
+                    }
+                    
+                    let unchunkedResponsesAsBytes = try? Response.unchunk(accumulatedData)
+
+                    var responses = [Response]()
+                    var success = true
+
+                    for responseBytes in unchunkedResponsesAsBytes ?? [] {
+                        if let response = try? Response.unpack(responseBytes) {
+                            responses.append(response)
+
+                            if let error = response.asError() {
+                                print("Error! \(error)")
+                                promise.fail(error)
+                                return
+                            }
+
+                            if response.category != .record {
+                                self.parseMeta(response.items)
+                            }
+
+                            success = success && response.category != .failure
+                        } else {
+                            print("Error: failed to parse response")
+                            return
+                        }
+                    }
+
+                    // Get more if not ending in a summary
+                    if success == true && responses.count > 1 && responses.last!.category == .record {
+                        loop()
+                        return
+                    }
+
+                    promise.succeed(responses)
+                        
+                }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
+
+            } catch {
+                promise.fail(error)
             }
+            
         }
 
-        if responseData.count < 2 {
-            print("Error, got too little data back")
-            print(request)
-            print(request.command)
-            print(request.items)
-            _ = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-            try completionHandler(false, [])
-            return
-        }
-
-        while (responseData[responseData.count - 1] == 0 && responseData[responseData.count - 2] == 0) == false { // chunk terminated by 0x00 0x00
-            let additionalResponseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-            responseData.append(contentsOf: additionalResponseData)
-        }
-        let unchunkedResponsesAsBytes = try Response.unchunk(responseData)
-
-        var responses = [Response]()
-        var success = true
-
-        for responseBytes in unchunkedResponsesAsBytes {
-            let response = try Response.unpack(responseBytes)
-            responses.append(response)
-
-            if let error = response.asError() {
-                throw error
-            }
-
-            if response.category != .record {
-                parseMeta(response.items)
-            }
-
-            success = success && response.category != .failure
-        }
-
-        // Get more if not ending in a summary
-        if success == true && responses.count > 1 && responses.last!.category == .record {
-            _ = try socket.receive(expectedNumberOfBytes: maxChunkSize)
-            return
-        }
-
-        try completionHandler(success, responses)
+        loop()
+        
+        return promise.futureResult
     }
 
 }
