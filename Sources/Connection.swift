@@ -12,6 +12,7 @@ public class Connection: NSObject {
 
     private var socket: SocketProtocol
     public var currentTransactionBookmark: String?
+    public var isConnected = false
     
     public init(socket: SocketProtocol,
                 settings: ConnectionSettings = ConnectionSettings() ) {
@@ -45,6 +46,7 @@ public class Connection: NSObject {
             
                 let initFuture = self.initialize(on: currentEventLoop)
                 initFuture.map { (response) in
+                    self.isConnected = true
                     try? completion(true)
                 }.whenFailure { error in
                     try? completion(false)
@@ -54,6 +56,7 @@ public class Connection: NSObject {
     }
 
     public func disconnect() {
+        isConnected = false
         socket.disconnect()
     }
 
@@ -96,6 +99,7 @@ public class Connection: NSObject {
         var accumulatedData: [Byte] = []
         
         func loop() {
+            print("_x_loop for \(message.command)")
             // First, we call `read` to read in the next chunk and hop
             // over to `eventLoop` so we can safely write to `accumulatedChunks`
             // without a lock.
@@ -183,6 +187,7 @@ public class Connection: NSObject {
 
     public func request(_ request: Request) throws -> EventLoopFuture<[Response]>? {
 
+        print("-> " + String(describing: request))
         guard let eventLoop = MultiThreadedEventLoopGroup.currentEventLoop else {
             print("Error, could not get current eventloop")
             return nil
@@ -196,11 +201,14 @@ public class Connection: NSObject {
         var accumulatedData: [Byte] = []
         
         func loop() {
+            print("<->loop for \(request.command)")
             // First, we call `read` to read in the next chunk and hop
             // over to `eventLoop` so we can safely write to `accumulatedChunks`
             // without a lock.
             do {
-                try socket.receive(expectedNumberOfBytes: maxChunkSize)?.hop(to: eventLoop).map { responseData in
+                let future = try socket.receive(expectedNumberOfBytes: maxChunkSize)
+                future?.whenSuccess { responseData in
+                // future?.hop(to: eventLoop).map { responseData in
                     // Next, we just append the chunk to the accumulation
                     
                     accumulatedData.append(contentsOf: responseData)
@@ -254,7 +262,7 @@ public class Connection: NSObject {
 
                     promise.succeed(responses)
                         
-                }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
+                } // .cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
 
             } catch {
                 promise.fail(error)

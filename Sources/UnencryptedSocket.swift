@@ -67,7 +67,10 @@ public class UnencryptedSocket {
     public func connect(timeout: Int, completion: @escaping () -> ()) throws {
 
         self.dataHandler.dataReceivedBlock = { data in
-            self.readPromise?.succeed(data)
+            print("Got \(data.count) bytes")
+            if let promise = self.readPromise {
+                promise.succeed(data)
+            }
         }
 
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -107,6 +110,7 @@ extension UnencryptedSocket: SocketProtocol {
 
     public func send(bytes: [Byte]) -> EventLoopFuture<Void>? {
 
+        print("\nSend")
         guard let channel = channel else { return nil }
 
         let didSendFuture: EventLoopPromise<Void>  = channel.eventLoop.makePromise()
@@ -126,10 +130,15 @@ extension UnencryptedSocket: SocketProtocol {
             return nil
         }
         
+        print("Made new promise")
         self.readPromise = readPromise
         
         self.channel?.read()
 
+        readPromise.futureResult.whenComplete { (_) in
+            print("result")
+        }
+        
         return readPromise.futureResult
     }
 }

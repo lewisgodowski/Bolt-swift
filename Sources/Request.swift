@@ -62,6 +62,10 @@ public struct Request {
         return Request(command: .reset, items: [])
     }
 
+    public static func run(statement: String) -> Request {
+        return Request(command: .run, items: [statement, Map.init(dictionary: [:])])
+    }
+
     public static func run(statement: String, parameters: Map) -> Request {
         return Request(command: .run, items: [statement, parameters])
     }

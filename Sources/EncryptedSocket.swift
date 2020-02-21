@@ -37,7 +37,6 @@ public class EncryptedSocket: UnencryptedSocket {
     override func setupBootstrap(_ group: MultiThreadedEventLoopGroup, _ dataHandler: ReadDataHandler) -> (Bootstrap) {
 
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        // let promise: EventLoopPromise<Void> = group.next().makePromise(of: Void.self)
 
         let trustRoot: NIOSSLTrustRoots = .default
         var cert: [NIOSSLCertificateSource] = []
