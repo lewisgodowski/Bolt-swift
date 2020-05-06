@@ -118,6 +118,7 @@ public class Connection: NSObject {
     
     private func initialize(on eventLoop: EventLoop) -> EventLoopFuture<Response> {
         let message = Request.initialize(settings: settings)
+        print("--v--> \(String(describing: message)))")
         let chunks = try? message.chunk()
         let sendFutures = chunks?.compactMap({ (chunk) -> EventLoopFuture<Void>? in
             socket.send(bytes: chunk)
@@ -135,6 +136,7 @@ public class Connection: NSObject {
             // without a lock.
             do {
                 try socket.receive(expectedNumberOfBytes: maxChunkSize)?.hop(to: eventLoop).map { responseData in
+                    print("loop() got \(responseData.count) bytes")
                     // Next, we just append the chunk to the accumulation
                     accumulatedData.append(contentsOf: responseData)
                     
@@ -162,8 +164,16 @@ public class Connection: NSObject {
             
         }
 
-        loop()
-
+        if let futures = sendFutures {
+            let future =  EventLoopFuture<Void>.andAllSucceed(futures, on: eventLoop)
+            future.whenSuccess {
+                loop()
+            }
+            future.whenFailure { error in
+                print("Sending chunks gave an error: \(error)")
+            }
+        }
+        
         return promise.futureResult
     }
 
