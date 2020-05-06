@@ -11,6 +11,7 @@ public struct Request {
         case ack_failure = 0x0e
         case reset = 0x0f
         case run = 0x10
+        case setMode = 0x11
         case discard_all = 0x2f
         case pull_all = 0x3f
 
@@ -28,6 +29,8 @@ public struct Request {
                 return "discard_all"
             case .pull_all:
                 return "pull_all"
+            case .setMode:
+                return "setMode"
             }
         }
     }
@@ -47,11 +50,27 @@ public struct Request {
 
         let agent = settings.userAgent
 
-        let authMap = Map(dictionary: ["scheme": "basic",
+        
+        let authMap = Map(dictionary: ["user-agent": agent, // TODO: Bolt-3 only
+                                       "scheme": "basic",
+                                       "principal": settings.username,
+                                       "credentials": settings.password])
+        
+        // Bolt 1&2:
+        /*
+         let authMap = Map(dictionary: ["scheme": "basic",
                                        "principal": settings.username,
                                        "credentials": settings.password])
 
-        return Request(command: .initialize, items: [agent, authMap])
+         return Request(command: .initialize, items: [agent, authMap])
+         */
+
+        return Request(command: .initialize, items: [authMap])
+    }
+    
+    public static func setMode(_ mode: String) -> Request {
+        let modeMap = Map(dictionary: ["mode": mode])
+        return Request(command: .setMode, items: [modeMap])
     }
 
     public static func ackFailure() -> Request {

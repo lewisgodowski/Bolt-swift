@@ -64,14 +64,14 @@ public class Connection: NSObject {
         
         let initPromise = eventLoop.makePromise(of: Bool.self)
         
-        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
+        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
 
             var version: UInt32 = 0
             _ = try? self.socket.receive(expectedNumberOfBytes: 4).map { response -> (Bool) in
                 let result = response.map { bytes -> Void in
                     do {
                         version = try UInt32.unpack(bytes[0..<bytes.count])
-                        initPromise.succeed(version == 1)
+                        initPromise.succeed(version != 0)
                     } catch {
                         version = 0
                         initPromise.succeed(false)
@@ -85,6 +85,36 @@ public class Connection: NSObject {
         return initPromise.futureResult
         
     }
+    
+    /*
+    public func setReadOnlyMode() {
+           do {
+               let setReadOnlyMode = Request.setMode("r")
+               let chunks = try setReadOnlyMode.chunk()
+               for chunk in chunks {
+                   try socket.send(bytes: chunk)
+               }
+               
+               let maxChunkSize = Int32(Request.kMaxChunkSize)
+               var responseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
+               while (responseData[responseData.count - 1] == 0 && responseData[responseData.count - 2] == 0) == false { // chunk terminated by 0x00 0x00
+                   let additionalResponseData = try socket.receive(expectedNumberOfBytes: maxChunkSize)
+                   responseData.append(contentsOf: additionalResponseData)
+               }
+
+               let unchunkedResponseDatas = try Response.unchunk(responseData)
+               for unchunkedResponseData in unchunkedResponseDatas {
+                   let unpackedResponse = try Response.unpack(unchunkedResponseData)
+                   if unpackedResponse.category != .success {
+                       throw ConnectionError.authenticationError
+                   }
+               }
+
+               
+           } catch {
+               print("Got error when setting read only mode")
+           }
+       }*/
     
     private func initialize(on eventLoop: EventLoop) -> EventLoopFuture<Response> {
         let message = Request.initialize(settings: settings)
