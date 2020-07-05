@@ -2,9 +2,9 @@ import Foundation
 import Bolt
 
 struct TestConfig {
-    let username: String
-    let password: String
-    let hostname: String
+    var username: String
+    var password: String
+    var hostname: String
     let port: Int
     let temporarySSLKeyPath: String
     let hostUsesSelfSignedCertificate: Bool

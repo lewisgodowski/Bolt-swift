@@ -39,7 +39,9 @@ class ReadDataHandler: ChannelInboundHandler {
             return
         }
 
-        if messageShouldEndInSummary(self.dataBuffer) && messageEndsInSummary(self.dataBuffer) == false {
+        if messageIsError(self.dataBuffer) == false,
+           messageShouldEndInSummary(self.dataBuffer),
+           messageEndsInSummary(self.dataBuffer) == false {
             // A longer message should always end in a summary. If not, wait for more data
             return
         }
@@ -79,6 +81,15 @@ class ReadDataHandler: ChannelInboundHandler {
         }
 
         return true
+    }
+    
+    func messageIsError(_ bytes: [UInt8]) -> Bool {
+        let n = bytes.count
+        if n <= 4 {
+            return false
+        }
+        
+        return bytes[3] == 0x7f && bytes[n-1] == 0x00 && bytes[n-2] == 0x00
     }
 
     func messageShouldEndInSummary(_ bytes: [UInt8]) -> Bool {
@@ -138,3 +149,4 @@ class ReadDataHandler: ChannelInboundHandler {
     }
 
 }
+
