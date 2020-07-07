@@ -77,7 +77,7 @@ public class Connection: NSObject {
         
         let initPromise = eventLoop.makePromise(of: Bool.self)
         
-        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
+        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
 
             var version: UInt32 = 0
             _ = try? self.socket.receive(expectedNumberOfBytes: 4).map { response -> (Bool) in
@@ -409,7 +409,7 @@ public class Connection: NSObject {
                     // print(String(describing: promise))
                     promise.succeed(responses)
                         
-                } // .cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
+                }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
 
             } catch {
                 promise.fail(error)
