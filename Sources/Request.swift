@@ -11,8 +11,12 @@ public struct Request {
         case ack_failure = 0x0e
         case reset = 0x0f
         case run = 0x10
+        // case setMode = 0x11
         case discard_all = 0x2f
         case pull_all = 0x3f
+        case begin = 0x11
+        case commit = 0x12
+        case rollback = 0x13
 
         func toString() -> String {
             switch(self) {
@@ -28,6 +32,14 @@ public struct Request {
                 return "discard_all"
             case .pull_all:
                 return "pull_all"
+            case .begin:
+                return "begin"
+            case .commit:
+                return "commit"
+            case .rollback:
+                return "rollback"
+//          case .setMode:
+//              return "setMode"
             }
         }
     }
@@ -47,11 +59,64 @@ public struct Request {
 
         let agent = settings.userAgent
 
-        let authMap = Map(dictionary: ["scheme": "basic",
+        
+        let authMap = Map(dictionary: ["user_agent": agent, // TODO: Bolt-3 only
+                                       "scheme": "basic",
+                                       "principal": settings.username,
+                                       "credentials": settings.password])
+        
+        // Bolt 1&2:
+        /*
+         let authMap = Map(dictionary: ["scheme": "basic",
                                        "principal": settings.username,
                                        "credentials": settings.password])
 
-        return Request(command: .initialize, items: [agent, authMap])
+         return Request(command: .initialize, items: [agent, authMap])
+         */
+
+        return Request(command: .initialize, items: [authMap])
+    }
+    
+    /*public static func setMode(_ mode: String) -> Request {
+        let modeMap = Map(dictionary: ["mode": mode])
+        return Request(command: .setMode, items: [modeMap])
+    }*/
+    
+    public enum TransactionMode: String {
+        case readonly = "r"
+        case readwrite = "w"
+    }
+    
+    public static func begin(
+        mode: TransactionMode = .readonly,
+        bookmarks: [String] = [],
+        metadata: [String:String] = [:],
+        timeoutInMs: UInt? = nil) -> Request {
+        
+        var dict: [String:PackProtocol] = ["mode": mode.rawValue]
+        
+        if bookmarks.count > 0 {
+            dict["bookmarks"] = bookmarks
+        }
+        
+        if metadata.count > 0 {
+            dict["tx_metadata"] = Map(dictionary: metadata)
+        }
+        
+        if let timeoutInMs = timeoutInMs {
+            dict["tx_timeout"] = Int(timeoutInMs)
+        }
+        
+        let modeMap = Map(dictionary: dict)
+        return Request(command: .begin, items: [modeMap])
+    }
+    
+    public static func commit() -> Request {
+        return Request(command: .commit, items: [])
+    }
+    
+    public static func rollback() -> Request {
+        return Request(command: .rollback, items: [])
     }
 
     public static func ackFailure() -> Request {
@@ -62,8 +127,13 @@ public struct Request {
         return Request(command: .reset, items: [])
     }
 
-    public static func run(statement: String, parameters: Map) -> Request {
-        return Request(command: .run, items: [statement, parameters])
+    public static func run(statement: String) -> Request {
+        // query, parameters and keyword parameters
+        return Request(command: .run, items: [statement, Map.init(dictionary: [:]), Map.init(dictionary: [:])])
+    }
+
+    public static func run(statement: String, parameters: Map, keywordParameters: Map = Map(dictionary: [:])) -> Request {
+        return Request(command: .run, items: [statement, parameters, keywordParameters])
     }
 
     public static func discardAll() -> Request {

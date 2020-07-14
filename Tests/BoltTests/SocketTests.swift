@@ -128,7 +128,7 @@ extension SocketTests {
                 dispatchGroup.leave()
             }
 
-            XCTAssertTrue(success, "Must be logged in successfully")
+            XCTAssertTrue(success != nil, "Must be logged in successfully")
 
             try block(conn, dispatchGroup)
         }

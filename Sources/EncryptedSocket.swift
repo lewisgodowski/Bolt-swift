@@ -31,13 +31,12 @@ extension Data {
 
 public class EncryptedSocket: UnencryptedSocket {
 
-    lazy var certificateValidator: CertificateValidatorProtocol = UnsecureCertificateValidator(hostname: self.hostname, port: UInt(self.port))
+    public lazy var certificateValidator: CertificateValidatorProtocol = UnsecureCertificateValidator(hostname: self.hostname, port: UInt(self.port))
 
     #if os(Linux)
     override func setupBootstrap(_ group: MultiThreadedEventLoopGroup, _ dataHandler: ReadDataHandler) -> (Bootstrap) {
 
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        // let promise: EventLoopPromise<Void> = group.next().makePromise(of: Void.self)
 
         let trustRoot: NIOSSLTrustRoots = .default
         var cert: [NIOSSLCertificateSource] = []
@@ -70,6 +69,7 @@ public class EncryptedSocket: UnencryptedSocket {
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
+                self.channel = channel
                 return channel.pipeline.addHandler(openSslHandler ).flatMap {
                     channel.pipeline.addHandler(dataHandler)
                 }
@@ -85,6 +85,7 @@ public class EncryptedSocket: UnencryptedSocket {
         return NIOTSConnectionBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
+                self.channel = channel
                 return channel.pipeline.addHandler(dataHandler)
             }
             .tlsConfig(validator: self.certificateValidator)

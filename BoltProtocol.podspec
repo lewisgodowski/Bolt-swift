@@ -2,7 +2,7 @@ Pod::Spec.new do |s|
 
   s.name         = "BoltProtocol"
   s.module_name  = 'Bolt'
-  s.version      = "5.0"
+  s.version      = "5.2"
   s.summary      = "Bolt protocol implementation in Swift"
 
   s.description  = <<-DESC
@@ -28,5 +28,5 @@ DESC
   s.dependency 'PackStream', '~> 1.1.2'
   s.dependency 'SwiftNIO', '~> 2.2'
   s.dependency 'SwiftNIOTransportServices', '~> 1.0.3'
-  s.swift_version = '5.0'
+  s.swift_version = '5.2'
 end

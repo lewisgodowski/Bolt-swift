@@ -13,7 +13,14 @@ extension ClientBootstrap: Bootstrap {}
 extension NIOTSConnectionBootstrap: Bootstrap {}
 #endif
 
+struct PromiseHolder {
+    let uuid: UUID = UUID()
+    let promise: EventLoopPromise<Array<UInt8>>
+}
+
 public class UnencryptedSocket {
+
+    var cnt = 1
 
     let hostname: String
     let port: Int
@@ -23,7 +30,8 @@ public class UnencryptedSocket {
     var channel: Channel?
 
     //var readGroup: DispatchGroup?
-    var readPromise: EventLoopPromise<[Byte]>?
+    // var readPromise: EventLoopPromise<[Byte]>?
+    var activePromises: [PromiseHolder] = []
     //var receivedData: [UInt8] = []
 
     fileprivate static let readBufferSize = 8192
@@ -58,16 +66,21 @@ public class UnencryptedSocket {
 
         return NIOTSConnectionBootstrap(group: overrideGroup)
             .channelInitializer { channel in
-                channel.pipeline.addHandlers([dataHandler], position: .last)
+                // print("#2")
+                return channel.pipeline.addHandlers([dataHandler], position: .last)
         }
     }
 
     #endif
 
-    public func connect(timeout: Int, completion: @escaping () -> ()) throws {
+    public func connect(timeout: Int, completion: @escaping (Error?) -> ()) throws {
 
         self.dataHandler.dataReceivedBlock = { data in
-            self.readPromise?.succeed(data)
+            //print("Got \(data.count) bytes: ")
+            //print(Data(bytes: data, count: data.count).hexEncodedString())
+            if let promise = self.activePromises.first?.promise {
+                promise.succeed(data)
+            }
         }
 
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -80,12 +93,23 @@ public class UnencryptedSocket {
         #endif
 
         self.bootstrap = bootstrap
+        // print("#1")
+        bootstrap.connectTimeout(TimeAmount.milliseconds(Int64(timeout)))
         bootstrap.connect(host: hostname, port: port).map{ theChannel -> Void in
             self.channel = theChannel
-
+        }.whenComplete { (result) in
+            
+            switch result {
+            case let .failure(error):
+                completion(error)
+            case .success(_):
+                completion(nil)
+            }
+        }
+/*
         }.whenSuccess { _ in
             completion()
-        }
+        }*/
         
     }
 }
@@ -111,14 +135,30 @@ extension UnencryptedSocket: SocketProtocol {
 
         let didSendFuture: EventLoopPromise<Void>  = channel.eventLoop.makePromise()
         
+        
         var buffer = channel.allocator.buffer(capacity: bytes.count)
         buffer.writeBytes(bytes)
-        channel.writeAndFlush(buffer).whenSuccess { _ in
-            didSendFuture.succeed(())
+        
+        let c = cnt
+        cnt = cnt + 1
+        
+        // print("\nSend #\(c)")
+        // print(Data(bytes: bytes, count: bytes.count).hexEncodedString())
+        
+        channel.writeAndFlush(buffer).whenComplete { result in
+            // print("Did send #\(c)")
+            switch result {
+            case .failure(let error):
+                print(String(describing: error))
+                didSendFuture.fail(error)
+            case .success(_):
+                didSendFuture.succeed(())
+            }
         }
         
         return didSendFuture.futureResult
     }
+    
 
     public func receive(expectedNumberOfBytes: Int32) throws -> EventLoopFuture<[Byte]>? {
 
@@ -126,10 +166,39 @@ extension UnencryptedSocket: SocketProtocol {
             return nil
         }
         
-        self.readPromise = readPromise
-        
+        // print("Made new promise")
+        //self.readPromise = readPromise
+        let holder = PromiseHolder(promise: readPromise)
+        self.activePromises.append(holder)
+        // print("now we've got active promises: \(self.activePromises.count)")
+
         self.channel?.read()
 
+        readPromise.futureResult.whenComplete { (_) in
+            self.activePromises = self.activePromises.filter { $0.uuid != holder.uuid }
+            // print("result, active promises: \(self.activePromises.count)")
+        }
+        
         return readPromise.futureResult
+    }
+}
+
+// TODO: Remove debug tool
+extension Data {
+    struct HexEncodingOptions: OptionSet {
+        let rawValue: Int
+        static let upperCase = HexEncodingOptions(rawValue: 1 << 0)
+    }
+
+    func hexEncodedString(options: HexEncodingOptions = []) -> String {
+        let hexDigits = Array((options.contains(.upperCase) ? "0123456789ABCDEF" : "0123456789abcdef").utf16)
+        var chars: [unichar] = []
+        chars.reserveCapacity(2 * count)
+        for byte in self {
+            chars.append(hexDigits[Int(byte / 16)])
+            chars.append(hexDigits[Int(byte % 16)])
+            chars.append(contentsOf: ", 0x".utf16)
+        }
+        return String(utf16CodeUnits: chars, count: chars.count)
     }
 }
