@@ -11,7 +11,10 @@ class ReadDataHandler: ChannelInboundHandler {
     var dataReceivedBlock: (([UInt8]) -> Void)?
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        var buffer = self.unwrapInboundIn(data)
+        #if BOLT_DEBUG
+        print("read....")
+        #endif
+        let buffer = self.unwrapInboundIn(data)
 
         defer {
             context.fireChannelRead(data)

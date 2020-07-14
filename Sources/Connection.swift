@@ -11,11 +11,7 @@ public class Connection: NSObject {
     private let settings: ConnectionSettings
 
     private var socket: SocketProtocol
-    public var currentTransactionBookmark: String? {
-        didSet {
-            print("did set: \(String(describing: currentTransactionBookmark))")
-        }
-    }
+    public var currentTransactionBookmark: String?
     public var isConnected = false
     
     private var currentEventLoop: EventLoop? = nil
@@ -52,7 +48,9 @@ public class Connection: NSObject {
             self.initBolt(on: currentEventLoop).whenSuccess { wasSuccess in
                 
                 if wasSuccess == false {
+                    #if BOLT_DEBUG
                     print("Hmm, this was no success")
+                    #endif
                     try? completion(ConnectionError.unknownError)
                     return
                 }
@@ -101,7 +99,9 @@ public class Connection: NSObject {
     
     public func readOnlyMode(_ blockToBePerformed: @escaping () -> ()) {
         guard let currentEventLoop = self.currentEventLoop else {
+            #if BOLT_DEBUG
             print("Event loop is missing")
+            #endif
             return
         }
         
@@ -118,7 +118,6 @@ public class Connection: NSObject {
         // var accumulatedData: [Byte] = []
         
         func loop(message: Request) {
-            // print("_x_loop for \(message.command)")
             // First, we call `read` to read in the next chunk and hop
             // over to `eventLoop` so we can safely write to `accumulatedChunks`
             // without a lock.
@@ -316,14 +315,19 @@ public class Connection: NSObject {
             return nil
         }
         
+        #if BOLT_DEBUG
         print("-> " + String(describing: request))
+        #endif
+        
         var theEventLoop = MultiThreadedEventLoopGroup.currentEventLoop
         if theEventLoop == nil {
             theEventLoop = MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
         }
         
         guard let eventLoop = theEventLoop else {
+            #if BOLT_DEBUG
             print("Error, could not get current eventloop")
+            #endif
             return nil
         }
         
@@ -336,12 +340,16 @@ public class Connection: NSObject {
         var accumulatedData: [Byte] = []
         
         func loop() {
+            #if BOLT_DEBUG
             print("<->loop for \(request.command)")
+            #endif
             // First, we call `read` to read in the next chunk and hop
             // over to `eventLoop` so we can safely write to `accumulatedChunks`
             // without a lock.
             do {
+                #if BOLT_DEBUG
                 print("-- ask to receive")
+                #endif
                 let future = try socket.receive(expectedNumberOfBytes: maxChunkSize)
                 _ = future?.map{ responseData in
                 // future?.whenSuccess { responseData in
@@ -351,14 +359,18 @@ public class Connection: NSObject {
                 // future?.hop(to: eventLoop).map { responseData in
                     // Next, we just append the chunk to the accumulation
 
+                    #if BOLT_DEBUG
                     print("-- append response")
+                    #endif
                     accumulatedData.append(contentsOf: responseData)
 
                     if responseData.count < 2 {
                         print("Error, got too little data back")
+                        #if BOLT_DEBUG
                         print(request)
                         print(request.command)
                         print(request.items)
+                        #endif
                         loop()
                         return
                     }
@@ -375,7 +387,9 @@ public class Connection: NSObject {
                     var responses = [Response]()
                     var success = true
 
+                    #if BOLT_DEBUG
                     print("-- success response, so process")
+                    #endif
                     for responseBytes in unchunkedResponsesAsBytes ?? [] {
                         if let response = try? Response.unpack(responseBytes) {
                             responses.append(response)
@@ -387,7 +401,9 @@ public class Connection: NSObject {
                             }
 
                             if response.category != .record {
+                                #if BOLT_DEBUG
                                 print("Get metadata")
+                                #endif
                                 self.parseMeta(response.items)
                             }
 
@@ -400,13 +416,17 @@ public class Connection: NSObject {
 
                     // Get more if not ending in a summary
                     if success == true && responses.count > 1 && responses.last!.category == .record {
+                        #if BOLT_DEBUG
                         print("-- must loop again")
+                        #endif
                         loop()
                         return
                     }
 
+                    #if BOLT_DEBUG
                     print("-- promise succeeds")
                     // print(String(describing: promise))
+                    #endif
                     promise.succeed(responses)
                         
                 }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
@@ -418,7 +438,6 @@ public class Connection: NSObject {
         }
 
         future.whenComplete { result in
-            // print("sent chunks")
             switch result {
             case .failure(let error):
                 print(String(describing: error))

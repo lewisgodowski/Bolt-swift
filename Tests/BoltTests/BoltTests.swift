@@ -65,9 +65,7 @@ class BoltTests: XCTestCase {
         let conn = Connection(socket: socket, settings: settings)
         try conn.connect { (error) in
             if error == nil {
-                print("---unwind now---")
                 self.unwind(connection: conn) { _ in
-                    print("---did unwind---")
                     connectionExp.fulfill()
                 }
             }
@@ -89,9 +87,7 @@ class BoltTests: XCTestCase {
         let conn = Connection(socket: socket, settings: settings)
         try conn.connect { (error) in
             if error == nil {
-                print("---unwind now---")
                 self.unwind(connection: conn) { _ in
-                    print("---did unwind---")
                     connectionExp.fulfill()
                 }
             }
@@ -133,7 +129,7 @@ class BoltTests: XCTestCase {
         
         conn.readOnlyMode {
             
-            let statement = "CREATE (n:FirstNode {name:{name}}) RETURN n"
+            let statement = "CREATE (n:FirstNode {name:$name}) RETURN n"
             let parameters = Map(dictionary: [ "name": "Steven" ])
             let request = Request.run(statement: statement, parameters: parameters)
             do {
