@@ -26,7 +26,8 @@ DESC
   s.source_files  = "Sources"
 
   s.dependency 'PackStream', '~> 1.1.2'
-  s.dependency 'SwiftNIO', '~> 2.2'
-  s.dependency 'SwiftNIOTransportServices', '~> 1.0.3'
+  s.dependency 'SwiftNIO', '~> 2.19.0'
+  s.dependency 'SwiftNIOSSL', '~> 2.8.0'
+  s.dependency 'SwiftNIOTransportServices', '~> 1.7.0'
   s.swift_version = '5.2'
 end
