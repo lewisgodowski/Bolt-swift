@@ -262,6 +262,7 @@ public class Connection: NSObject {
 
     public enum ConnectionError: Error {
         case unknownVersion
+        case noConnection
         case authenticationError
         case requestError
         case unknownError
@@ -308,35 +309,32 @@ public class Connection: NSObject {
         }
     }
 
-    public func request(_ request: Request) throws -> EventLoopFuture<[Response]>? {
+    public func request(_ request: Request) -> EventLoopFuture<[Response]> {
 
-        if isConnected == false {
-            print("Bolt client is not connected")
-            return nil
-        }
-        
         #if BOLT_DEBUG
         print("-> " + String(describing: request))
         #endif
         
-        var theEventLoop = MultiThreadedEventLoopGroup.currentEventLoop
-        if theEventLoop == nil {
-            theEventLoop = MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
+        // print("MultiThreadedEventLoopGroup.currentEventLoop = \(MultiThreadedEventLoopGroup.currentEventLoop == nil ? "nil" : "not nil")")
+        let theEventLoop = MultiThreadedEventLoopGroup.currentEventLoop ?? MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
+        // print("Request running on event loop thread: \(theEventLoop.description)")
+        
+        let promise = theEventLoop.makePromise(of: [Response].self)
+        
+        if isConnected == false {
+            print("Bolt client is not connected")
+            return theEventLoop.makeFailedFuture(ConnectionError.noConnection)
         }
         
-        guard let eventLoop = theEventLoop else {
-            #if BOLT_DEBUG
-            print("Error, could not get current eventloop")
-            #endif
-            return nil
+        var futures: [EventLoopFuture<Void>] = []
+        do {
+            futures = try chunkAndSend(request: request)
+        } catch {
+            return theEventLoop.makeFailedFuture(ConnectionError.requestError)
         }
-        
-        let futures = try chunkAndSend(request: request)
-        let future = futures.count == 1 ? futures.first! : EventLoopFuture<Void>.andAllComplete(futures, on: eventLoop)
+        let future = futures.count == 1 ? futures.first! : EventLoopFuture<Void>.andAllComplete(futures, on: theEventLoop)
 
         let maxChunkSize = Int32(Request.kMaxChunkSize)
-        
-        let promise = eventLoop.makePromise(of: [Response].self)
         var accumulatedData: [Byte] = []
         
         func loop() {
