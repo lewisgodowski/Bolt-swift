@@ -58,7 +58,7 @@ extension SocketTests {
         
         let statements = [ stmt1, stmt2, stmt3, stmt4, stmt5, stmt6, stmt7, stmt8, stmt9, stmt10, stmt11 ]
 
-        try performAsLoggedIn { (conn, dispatchGroup) in
+        try performAsLoggedIn { (conn) in
 
             self.perform(conn: conn, exp: exp, statements: statements)
             
@@ -117,22 +117,26 @@ extension SocketTests {
         })
     }
 
-    func performAsLoggedIn(block: @escaping (Connection, DispatchGroup) throws -> Void) throws {
+    func performAsLoggedIn(block: @escaping (Connection) throws -> Void) throws {
 
         let conn = Connection(socket: socket, settings: settings)
 
-        let dispatchGroup = DispatchGroup()
-        dispatchGroup.enter()
-        try conn.connect { success in
-            defer {
-                dispatchGroup.leave()
+        do {
+            try conn.connect { (error) in
+                if let error = error {
+                    print("Unknown error while connecting: \(error.localizedDescription)")
+                    XCTFail()
+                } else {
+                    try block(conn)
+                }
             }
-
-            XCTAssertTrue(success != nil, "Must be logged in successfully")
-
-            try block(conn, dispatchGroup)
+        } catch let error as Connection.ConnectionError {
+            print("Connection error while connecting: \(error.localizedDescription)")
+            XCTFail()
+        } catch let error {
+            print("Unknown error while connecting: \(error.localizedDescription)")
+            XCTFail()
         }
-        dispatchGroup.wait()
     }
     
     func templateMichaels100kCannotFitInATransaction(_ testcase: XCTestCase) throws {
@@ -145,7 +149,7 @@ extension SocketTests {
 
         let exp = testcase.expectation(description: "Test successful")
 
-        try performAsLoggedIn { (conn, dispatchGroup) in
+        try performAsLoggedIn { (conn) in
 
             self.perform(conn: conn, exp: exp, statements: statements)
             
@@ -204,7 +208,7 @@ extension SocketTests {
         
         let exp = testcase.expectation(description: "Test successful")
 
-        try performAsLoggedIn { (conn, dispatchGroup) in
+        try performAsLoggedIn { (conn) in
 
             let request = Request.run(statement: stmt, parameters: Map(dictionary: [:]))
             let promise = conn.request(request)
@@ -230,7 +234,7 @@ extension SocketTests {
         
         let stmt = "UNWIND RANGE(1, 10000) AS n RETURN n"
 
-        try? performAsLoggedIn { (conn, dispatchGroup) in
+        try? performAsLoggedIn { (conn) in
 
             let request = Request.run(statement: stmt, parameters: Map(dictionary: [:]))
             let promise = conn.request(request)
@@ -264,7 +268,7 @@ extension SocketTests {
 
         let stmt = "UNWIND RANGE(1, 10) AS n RETURN n, n * n as n_sq"
 
-        try? performAsLoggedIn { (conn, dispatchGroup) in
+        try? performAsLoggedIn { (conn) in
 
             let request = Request.run(statement: stmt, parameters: Map(dictionary: [:]))
             let promise = conn.request(request)
