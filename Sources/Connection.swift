@@ -79,7 +79,7 @@ public class Connection: NSObject {
 
             var version: UInt32 = 0
             _ = try? self.socket.receive(expectedNumberOfBytes: 4).map { response -> (Bool) in
-                let result = response.map { bytes -> Void in
+                _ = response.map { bytes -> Void in
                     do {
                         version = try UInt32.unpack(bytes[0..<bytes.count])
                         initPromise.succeed(version != 0)
