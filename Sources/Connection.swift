@@ -319,8 +319,6 @@ public class Connection: NSObject {
         let theEventLoop = MultiThreadedEventLoopGroup.currentEventLoop ?? MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
         // print("Request running on event loop thread: \(theEventLoop.description)")
         
-        let promise = theEventLoop.makePromise(of: [Response].self)
-        
         if isConnected == false {
             print("Bolt client is not connected")
             return theEventLoop.makeFailedFuture(ConnectionError.noConnection)
@@ -336,6 +334,8 @@ public class Connection: NSObject {
 
         let maxChunkSize = Int32(Request.kMaxChunkSize)
         var accumulatedData: [Byte] = []
+        
+        let promise = theEventLoop.makePromise(of: [Response].self)
         
         func loop() {
             #if BOLT_DEBUG
