@@ -141,7 +141,7 @@ class BoltTests: XCTestCase {
 
             print("START", formatter.string(from: Date()))
             try await connection.connect()
-            _ = try await connection.request(Request.run(statement: "MATCH (r:Recommendation) RETURN r"))
+            _ = try await connection.request(Request.run(statement: "MATCH (n) RETURN n"))
             let responses = try await connection.request(Request.pull())
             print("END", formatter.string(from: Date()))
             print(responses)
