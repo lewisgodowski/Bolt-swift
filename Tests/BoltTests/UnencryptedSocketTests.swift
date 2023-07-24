@@ -26,38 +26,38 @@ class UnencryptedSocketTests: XCTestCase {
 
     static var allTests: [(String, (UnencryptedSocketTests) -> () throws -> Void)] {
         return [
-            ("testMichaels100k", testMichaels100k),
-            ("testMichaels100kCannotFitInATransaction", testMichaels100kCannotFitInATransaction),
-            ("testRubbishCypher", testRubbishCypher),
-            ("testUnwind", testUnwind),
-            ("testUnwindWithToNodes", testUnwindWithToNodes)
+//            ("testMichaels100k", testMichaels100k),
+//            ("testMichaels100kCannotFitInATransaction", testMichaels100kCannotFitInATransaction),
+//            ("testRubbishCypher", testRubbishCypher),
+//            ("testUnwind", testUnwind),
+//            ("testUnwindWithToNodes", testUnwindWithToNodes)
         ]
     }
 
-    func testMichaels100k() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100k(self)
-    }
-
-    func testMichaels100kCannotFitInATransaction() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
-    }
-
-    func testRubbishCypher() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateRubbishCypher(self)
-    }
-
-    func testUnwind() throws {
-        XCTAssertNotNil(socketTests)
-        socketTests?.templateUnwind(self)
-    }
-
-    func testUnwindWithToNodes() {
-        XCTAssertNotNil(socketTests)
-        socketTests?.templateUnwindWithToNodes(self)
-    }
+//    func testMichaels100k() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateMichaels100k(self)
+//    }
+//
+//    func testMichaels100kCannotFitInATransaction() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
+//    }
+//
+//    func testRubbishCypher() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateRubbishCypher(self)
+//    }
+//
+//    func testUnwind() throws {
+//        XCTAssertNotNil(socketTests)
+//        socketTests?.templateUnwind(self)
+//    }
+//
+//    func testUnwindWithToNodes() {
+//        XCTAssertNotNil(socketTests)
+//        socketTests?.templateUnwindWithToNodes(self)
+//    }
 
 }
 

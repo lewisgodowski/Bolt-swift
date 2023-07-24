@@ -16,23 +16,20 @@ var targets: [PackageDescription.Target] = [
 ]
 
 let package = Package(
-    
     name: "Bolt",
-    
     platforms: [
-        .macOS(.v10_15), 
+        .macOS(.v10_15),
         .iOS(.v13),
         .tvOS(.v13),
     ],
-    
     products: [
         .library(name: "Bolt", targets: ["Bolt"]),
     ],
     dependencies: [
         .package(name: "PackStream", url: "https://github.com/Neo4j-Swift/PackStream-swift.git", from: "1.1.2"),
-        .package(name: "swift-nio", url: "https://github.com/apple/swift-nio.git", from: "2.19.0"),
-        .package(name: "swift-nio-ssl", url: "https://github.com/apple/swift-nio-ssl.git", from: "2.8.0"),
-        .package(name: "swift-nio-transport-services", url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.7.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.56.0"),
+        .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.24.0"),
+        .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.17.0")
     ],
     targets: targets
 )

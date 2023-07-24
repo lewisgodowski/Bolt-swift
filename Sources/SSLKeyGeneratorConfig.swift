@@ -20,8 +20,8 @@ public struct SSLKeyGeneratorConfig {
         orgUnitName: String,
         commonName: String,
         emailAddress: String,
-        companyName: String) {
-
+        companyName: String
+    ) {
         self.signingRequestFileName = signingRequestFileName
         self.countryName = countryName
         self.stateOrProvinceName = stateOrProvinceName
@@ -34,7 +34,6 @@ public struct SSLKeyGeneratorConfig {
     }
 
     public init(json: [String: Any]) {
-
         signingRequestFileName = json["signingRequestFileName"] as? String ?? "csr.csr"
         countryName = json["countryName"] as? String ?? "DK"
         stateOrProvinceName = json["stateOrProvinceName"] as? String ?? "Esbjerg"

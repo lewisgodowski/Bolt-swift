@@ -4,13 +4,20 @@ import NIO
 import NIOTransportServices
 
 internal protocol Bootstrap {
+    // async/await
+    func connect(host: String, port: Int) async throws -> Channel
+
     func connect(host: String, port: Int) -> EventLoopFuture<Channel>
 }
 
 #if os(Linux)
 extension ClientBootstrap: Bootstrap {}
 #else
-extension NIOTSConnectionBootstrap: Bootstrap {}
+extension NIOTSConnectionBootstrap: Bootstrap {
+    func connect(host: String, port: Int) async throws -> Channel {
+        try await connect(host: host, port: port).get()
+    }
+}
 #endif
 
 struct PromiseHolder {
@@ -19,7 +26,6 @@ struct PromiseHolder {
 }
 
 public class UnencryptedSocket {
-
     var cnt = 1
 
     let hostname: String
@@ -29,10 +35,7 @@ public class UnencryptedSocket {
     var bootstrap: Bootstrap?
     var channel: Channel?
 
-    //var readGroup: DispatchGroup?
-    // var readPromise: EventLoopPromise<[Byte]>?
     var activePromises: [PromiseHolder] = []
-    //var receivedData: [UInt8] = []
 
     fileprivate static let readBufferSize = 8192
 
@@ -43,35 +46,18 @@ public class UnencryptedSocket {
         self.port = port
     }
 
-    #if os(Linux)
-
-    // Linux version
+#if os(Linux)
     func setupBootstrap(_ group: MultiThreadedEventLoopGroup, _ dataHandler: ReadDataHandler) -> (Bootstrap) {
-
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-
-        return ClientBootstrap(group: group)
+        ClientBootstrap(group: MultiThreadedEventLoopGroup(numberOfThreads: 1))
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
-            .channelInitializer { channel in
-                return channel.pipeline.addHandler(dataHandler)
-            }
+            .channelInitializer { $0.pipeline.addHandler(dataHandler) }
     }
-
-    #else
-
-    // Apple version
+#else
     func setupBootstrap(_ group: MultiThreadedEventLoopGroup, _ dataHandler: ReadDataHandler) -> (Bootstrap) {
-
-        let overrideGroup = NIOTSEventLoopGroup(loopCount: 1, defaultQoS: .utility)
-
-        return NIOTSConnectionBootstrap(group: overrideGroup)
-            .channelInitializer { channel in
-                // print("#2")
-                return channel.pipeline.addHandlers([dataHandler], position: .last)
-        }
+        NIOTSConnectionBootstrap(group: NIOTSEventLoopGroup(loopCount: 1, defaultQoS: .utility))
+            .channelInitializer { $0.pipeline.addHandlers([dataHandler], position: .last) }
     }
-
-    #endif
+#endif
 
     public func connect(timeout: Int, completion: @escaping (Error?) -> ()) throws {
 
@@ -123,10 +109,34 @@ extension Array where Element == Byte {
 }
 
 extension UnencryptedSocket: SocketProtocol {
+    public func connect(timeout: TimeAmount) async throws {
+        dataHandler.dataReceivedBlock = { [weak self] data in
+            if let promise = self?.activePromises.first?.promise {
+                promise.succeed(data)
+            }
+        }
 
-    public func disconnect() {
-        try? channel?.close(mode: .all).wait()
-        try? group?.syncShutdownGracefully()
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        self.group = group
+
+#if os(Linux)
+        let bootstrap = setupBootstrap(group, self.dataHandler) as! ClientBootstrap
+#else
+        let bootstrap = setupBootstrap(group, dataHandler) as! NIOTSConnectionBootstrap
+#endif
+
+        self.bootstrap = bootstrap
+        _ = bootstrap.connectTimeout(timeout)
+        self.channel = try await bootstrap.connect(host: hostname, port: port)
+    }
+
+    public func send(bytes: [Byte]) async throws {
+        guard let channel else { throw Response.ResponseError.requestInvalid(message: "No channel") }
+
+        var buffer = channel.allocator.buffer(capacity: bytes.count)
+        buffer.writeBytes(bytes)
+
+        try await channel.writeAndFlush(buffer)
     }
 
     public func send(bytes: [Byte]) -> EventLoopFuture<Void>? {
@@ -158,7 +168,14 @@ extension UnencryptedSocket: SocketProtocol {
         
         return didSendFuture.futureResult
     }
-    
+
+    public func receive(expectedNumberOfBytes: Int32) async throws -> [Byte] {
+        // Using an async/await wrapper until the underlying `receive(expectedNumberOfBytes:)` method can be converted.
+        guard let bytes = try await receive(expectedNumberOfBytes: expectedNumberOfBytes)?.get() else {
+            throw Response.ResponseError.requestInvalid(message: "Failed to receive bytes.")
+        }
+        return bytes
+    }
 
     public func receive(expectedNumberOfBytes: Int32) throws -> EventLoopFuture<[Byte]>? {
 
@@ -180,6 +197,11 @@ extension UnencryptedSocket: SocketProtocol {
         }
         
         return readPromise.futureResult
+    }
+
+    public func disconnect() {
+        try? channel?.close(mode: .all).wait()
+        try? group?.syncShutdownGracefully()
     }
 }
 

@@ -4,17 +4,15 @@ import NIOSSL
 #endif
 
 public protocol CertificateValidatorProtocol {
-
     var hostname: String { get }
     var port: UInt { get }
 
-    #if os(Linux)
+#if os(Linux)
     var trustedCertificates: [NIOSSLCertificateSource] { get }
-    #else
+#else
     var trustedCertificates: [SecCertificate] { get }
-    #endif
+#endif
 
     func shouldTrustCertificate(withSHA1: String) -> Bool
     func didTrustCertificate(withSHA1: String)
-
 }

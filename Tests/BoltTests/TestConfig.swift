@@ -18,8 +18,8 @@ struct TestConfig {
             let jsonConfig = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any]
 
             self.username = jsonConfig?["username"] as? String ?? "neo4j"
-            self.password = jsonConfig?["password"] as? String ?? "neo4j"
-            self.hostname = jsonConfig?["hostname"] as? String ?? "localhost"
+            self.password = jsonConfig?["password"] as? String ?? "PlIbpT3lvxvD06NtmH2bDCvN3AA9znJx4qdwShFeFCY"
+            self.hostname = jsonConfig?["hostname"] as? String ?? "fa962e09.databases.neo4j.io"
             self.port     = jsonConfig?["port"] as? Int ?? 7687
             self.hostUsesSelfSignedCertificate = jsonConfig?["hostUsesSelfSignedCertificate"] as? Bool ?? true
             self.temporarySSLKeyPath = jsonConfig?["temporarySSLKeyPath"] as? String ?? "/tmp/boltTestKeys"
@@ -28,8 +28,8 @@ struct TestConfig {
         } catch {
 
             self.username = "neo4j"
-            self.password = "neo4j"
-            self.hostname = "localhost"
+            self.password = "PlIbpT3lvxvD06NtmH2bDCvN3AA9znJx4qdwShFeFCY"
+            self.hostname = "fa962e09.databases.neo4j.io"
             self.port     = 7687
             self.hostUsesSelfSignedCertificate = true
             self.temporarySSLKeyPath = "/tmp/boltTestKeys"

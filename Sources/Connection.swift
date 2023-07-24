@@ -7,27 +7,33 @@ import Dispatch
 #endif
 
 public class Connection: NSObject {
-
     private let settings: ConnectionSettings
-
     private var socket: SocketProtocol
     public var currentTransactionBookmark: String?
     public var isConnected = false
-    
     private var currentEventLoop: EventLoop? = nil
     
-    public init(socket: SocketProtocol,
-                settings: ConnectionSettings = ConnectionSettings() ) {
-
+    public init(
+        socket: SocketProtocol,
+        settings: ConnectionSettings = ConnectionSettings()
+    ) {
         self.socket = socket
         self.settings = settings
 
         super.init()
     }
 
+    public func connect() async throws {
+        try await socket.connect(timeout: .seconds(30))
+        try await initBolt()
+        try await initialize()
+
+        self.isConnected = true
+    }
+
     public func connect(completion: @escaping (_ error: Error?) throws -> Void) throws {
-        try socket.connect(timeout: 2500 /* in ms */) { error in
-            
+        try socket.connect(timeout: 30000 /* in ms */) { error in
+
             if let error = error {
                 try? completion(error)
                 return
@@ -71,11 +77,23 @@ public class Connection: NSObject {
         socket.disconnect()
     }
 
+    private func initBolt() async throws {
+        try await socket.send(
+            bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x02, 0x02, 0x04, 0x00, 0x00, 0x03, 0x04, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x05]
+        )
+
+        var version: UInt32 = 0
+        let bytes = try await socket.receive(expectedNumberOfBytes: 4)
+        version = try UInt32.unpack(bytes[0..<bytes.count])
+
+        guard version != 0 else { throw ConnectionError.unknownVersion }
+    }
+
     private func initBolt(on eventLoop: EventLoop) -> EventLoopFuture<Bool> {
         
         let initPromise = eventLoop.makePromise(of: Bool.self)
         
-        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])?.whenSuccess { promise in
+        self.socket.send(bytes: [0x60, 0x60, 0xB0, 0x17, 0x00, 0x02, 0x02, 0x04, 0x00, 0x00, 0x03, 0x04, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x05])?.whenSuccess { promise in
 
             var version: UInt32 = 0
             _ = try? self.socket.receive(expectedNumberOfBytes: 4).map { response -> (Bool) in
@@ -198,7 +216,37 @@ public class Connection: NSObject {
                print("Got error when setting read only mode")
            }
        }*/
-    
+
+    private func initialize() async throws {
+        let message = Request.initialize(settings: settings)
+
+        let chunks = try? message.chunk()
+        for chunk in (chunks ?? []) {
+            try await socket.send(bytes: chunk)
+        }
+
+        let maxChunkSize = Int32(Request.kMaxChunkSize)
+        var accumulatedData: [Byte] = []
+
+        func loop(message: Request) async throws {
+            let bytes = try await socket.receive(expectedNumberOfBytes: maxChunkSize)
+            accumulatedData.append(contentsOf: bytes)
+
+            if !(bytes[bytes.count - 1] == 0 && bytes[bytes.count - 2] == 0) {
+                try await loop(message: message)
+            } else {
+                let unchunkedResponseDatas = try? Response.unchunk(accumulatedData)
+                for unchunkedResponseData in unchunkedResponseDatas ?? [] {
+                    if let unpackedResponse = try? Response.unpack(unchunkedResponseData) {
+                        guard unpackedResponse.category == .success else { throw ConnectionError.authenticationError }
+                    }
+                }
+            }
+        }
+
+        try await loop(message: message)
+    }
+
     private func initialize(on eventLoop: EventLoop) -> EventLoopFuture<Response> {
         let message = Request.initialize(settings: settings)
         // print("--v--> \(String(describing: message)))")
@@ -276,12 +324,7 @@ public class Connection: NSObject {
     }
 
     private func chunkAndSend(request: Request) throws -> [EventLoopFuture<Void>] {
-
-        let chunks = try request.chunk()
-
-        let futures = chunks.compactMap { socket.send(bytes: $0) }
-
-        return futures
+        try request.chunk().compactMap { socket.send(bytes: $0) }
     }
 
     private func parseMeta(_ meta: [PackProtocol]) {
@@ -309,8 +352,11 @@ public class Connection: NSObject {
         }
     }
 
-    public func request(_ request: Request) -> EventLoopFuture<[Response]> {
+    public func request(_ request: Request) async throws -> [Response] {
+        try await self.request(request).get()
+    }
 
+    public func request(_ request: Request) -> EventLoopFuture<[Response]> {
         #if BOLT_DEBUG
         print("-> " + String(describing: request))
         #endif
@@ -318,12 +364,9 @@ public class Connection: NSObject {
         // print("MultiThreadedEventLoopGroup.currentEventLoop = \(MultiThreadedEventLoopGroup.currentEventLoop == nil ? "nil" : "not nil")")
         let theEventLoop = MultiThreadedEventLoopGroup.currentEventLoop ?? MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
         // print("Request running on event loop thread: \(theEventLoop.description)")
-        
-        if isConnected == false {
-            print("Bolt client is not connected")
-            return theEventLoop.makeFailedFuture(ConnectionError.noConnection)
-        }
-        
+
+        guard isConnected else { return theEventLoop.makeFailedFuture(ConnectionError.noConnection) }
+
         var futures: [EventLoopFuture<Void>] = []
         do {
             futures = try chunkAndSend(request: request)
@@ -392,7 +435,7 @@ public class Connection: NSObject {
                         if let response = try? Response.unpack(responseBytes) {
                             responses.append(response)
 
-                            if let error = response.asError() {
+                            if let error = response.error {
                                 print("Error! \(error)")
                                 promise.fail(error)
                                 return
@@ -428,7 +471,6 @@ public class Connection: NSObject {
                     promise.succeed(responses)
                         
                 }.cascadeFailure(to: promise) // if anything goes wrong, we fail the whole thing.
-
             } catch {
                 promise.fail(error)
             }
@@ -446,5 +488,4 @@ public class Connection: NSObject {
         
         return promise.futureResult
     }
-
 }

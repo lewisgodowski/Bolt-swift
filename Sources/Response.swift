@@ -2,7 +2,6 @@ import Foundation
 import PackStream
 
 public struct Response {
-
     public let category: Category
     public let items: [PackProtocol]
 
@@ -37,32 +36,29 @@ public struct Response {
         case serverOutOfMemory
     }
 
-    public func asError() -> Error? {
-        if category != .failure {
-            return nil
-        }
+    public var error: Error? {
+        guard category == .failure else { return nil }
 
         for item in items {
             if let map = item as? Map,
-                let message = map.dictionary["message"] as? String,
-                let code = map.dictionary["code"] as? String {
+               let message = map.dictionary["message"] as? String,
+               let code = map.dictionary["code"] as? String {
 
                 switch code {
-                case "Neo.ClientError.Statement.SyntaxError":
-                    return ResponseError.syntaxError(message: message)
-                case "Neo.ClientError.Schema.IndexNotFound":
-                    return ResponseError.indexNotFound(message: message)
-                case "Neo.ClientError.Transaction.ForbiddenDueToTransactionType":
-                    return ResponseError.forbiddenDueToTransactionType(message: message)
-                case "Neo.ClientError.Statement.ConstraintVerificationFailed":
-                    return ResponseError.constraintVerificationFailed(message: message)
-                case "Neo.ClientError.Request.Invalid":
-                    return ResponseError.requestInvalid(message: message)
-                case "Neo.TransientError.General.OutOfMemoryError":
-                    return ResponseError.serverOutOfMemory
-
-                default:
-                    print("Response error with \(code) unknown, thus ignored")
+                    case "Neo.ClientError.Statement.SyntaxError":
+                        return ResponseError.syntaxError(message: message)
+                    case "Neo.ClientError.Schema.IndexNotFound":
+                        return ResponseError.indexNotFound(message: message)
+                    case "Neo.ClientError.Transaction.ForbiddenDueToTransactionType":
+                        return ResponseError.forbiddenDueToTransactionType(message: message)
+                    case "Neo.ClientError.Statement.ConstraintVerificationFailed":
+                        return ResponseError.constraintVerificationFailed(message: message)
+                    case "Neo.ClientError.Request.Invalid":
+                        return ResponseError.requestInvalid(message: message)
+                    case "Neo.TransientError.General.OutOfMemoryError":
+                        return ResponseError.serverOutOfMemory
+                    default:
+                        print("Response error with \(code) unknown, thus ignored")
                 }
 
             }
@@ -89,17 +85,13 @@ public struct Response {
     }
 
     private static func unchunk(_ bytes: ArraySlice<Byte>, fromPos: Int = 0) throws -> ([Byte], Int) {
-
-        if bytes.count < 2 {
-            throw ResponseError.tooFewBytes
-        }
+        guard bytes.count >= 2 else { throw ResponseError.tooFewBytes }
 
         var chunks = [[Byte]]()
         var hasMoreChunks = true
         var pos = fromPos
 
-        while hasMoreChunks == true {
-
+        while hasMoreChunks {
             let sizeBytes = bytes[pos ..< (pos+2)]
             pos += 2
             let size = Int(try UInt16.unpack(sizeBytes))
@@ -107,7 +99,6 @@ public struct Response {
             if (pos+size >= bytes.endIndex) || (size == 0) {
                 hasMoreChunks = false
             } else {
-
                 let chunk = bytes[pos..<(pos+size)]
                 pos += size
                 if size > 0 {
@@ -116,54 +107,30 @@ public struct Response {
             }
         }
 
-        let unchunkedResponseBytes = chunks.reduce([Byte](), { (result, chunk) -> [Byte] in
-            return result + chunk
-        })
+        let unchunkedResponseBytes = chunks.reduce([Byte]()) { result, chunk -> [Byte] in
+            result + chunk
+        }
 
         return (unchunkedResponseBytes, pos)
     }
 
     public static func unpack(_ bytes: [Byte]) throws -> Response {
-
-        if bytes.count == 0 {
-            throw ResponseError.tooFewBytes
-        }
+        guard bytes.count != 0 else { throw ResponseError.tooFewBytes }
 
         let marker = Packer.Representations.typeFrom(representation: bytes[0])
-        switch(marker) {
-        case .null:
-            break
-        case .bool:
-            break
-        case .int8small:
-            break
-        case .int8:
-            break
-        case .int16:
-            break
-        case .int32:
-            break
-        case .int64:
-            break
-        case .float:
-            break
-        case .string:
-            break
-        case .list:
-            break
-        case .map:
-            break
-        case .structure:
-            let s = try Structure.unpack(bytes[0..<bytes.count])
-            if let category = Category(rawValue: s.signature) {
-                let response = Response(category: category, items: s.items)
-                return response
-            } else {
-                throw ResponseError.invalidResponseType
-            }
+        switch marker {
+            case .structure:
+                let s = try Structure.unpack(bytes[0..<bytes.count])
+                if let category = Category(rawValue: s.signature) {
+                    let response = Response(category: category, items: s.items)
+                    return response
+                } else {
+                    throw ResponseError.invalidResponseType
+                }
+            default:
+                ()
         }
 
         return Response()
     }
-
 }

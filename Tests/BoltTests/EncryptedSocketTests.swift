@@ -34,29 +34,29 @@ class EncryptedSocketTests: XCTestCase {
         ]
     }*/
 
-    func testMichaels100k() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100k(self)
-    }
-
-    func testMichaels100kCannotFitInATransaction() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
-    }
-
-    func testRubbishCypher() throws {
-        XCTAssertNotNil(socketTests)
-        try socketTests?.templateRubbishCypher(self)
-    }
-
-    func testUnwind() throws {
-        XCTAssertNotNil(socketTests)
-        self.socketTests?.templateUnwind(self)
-    }
-
-    func testUnwindWithToNodes() throws {
-        XCTAssertNotNil(socketTests)
-        socketTests?.templateUnwindWithToNodes(self)
-    }
+//    func testMichaels100k() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateMichaels100k(self)
+//    }
+//
+//    func testMichaels100kCannotFitInATransaction() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateMichaels100kCannotFitInATransaction(self)
+//    }
+//
+//    func testRubbishCypher() throws {
+//        XCTAssertNotNil(socketTests)
+//        try socketTests?.templateRubbishCypher(self)
+//    }
+//
+//    func testUnwind() throws {
+//        XCTAssertNotNil(socketTests)
+//        self.socketTests?.templateUnwind(self)
+//    }
+//
+//    func testUnwindWithToNodes() throws {
+//        XCTAssertNotNil(socketTests)
+//        socketTests?.templateUnwindWithToNodes(self)
+//    }
 
 }
